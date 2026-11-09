@@ -11,7 +11,6 @@ esbuild.buildSync({
   platform: "node",
   format: "cjs",
   target: "node24",
-  banner: { js: "#!/usr/bin/env node" },
   logLevel: "info"
 });
 fs.chmodSync(outfile, 0o755);
