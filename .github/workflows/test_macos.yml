@@ -1,0 +1,143 @@
+name: GitHubRepoManager macOS dual-track tests
+
+on:
+  push:
+    branches: [main, "feature/**", "test/**"]
+    paths-ignore:
+      - test_report.md
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repo-manager-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: true
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Initialize test output folder
+        if: always()
+        run: mkdir -p tests/output
+
+      - name: Install dependencies
+        id: install
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm ci 2>&1 | tee tests/output/install.log
+
+      - name: Doctor
+        id: doctor
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run doctor 2>&1 | tee tests/output/doctor.log
+
+      - name: TypeScript typecheck
+        id: typecheck
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee tests/output/typecheck.log
+
+      - name: Unit tests
+        id: unit
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:unit 2>&1 | tee tests/output/unit.log
+
+      - name: Local Git integration tests with mock gh
+        id: integration
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:integration 2>&1 | tee tests/output/integration.log
+
+      - name: Build standalone JavaScript
+        id: build
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee tests/output/build.log
+
+      - name: Compiled CLI smoke tests
+        id: smoke
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          npm run test:smoke 2>&1 | tee tests/output/smoke.log
+
+      - name: Always generate test_report.md
+        if: always()
+        env:
+          STAGE_INSTALL: ${{ steps.install.outcome }}
+          STAGE_DOCTOR: ${{ steps.doctor.outcome }}
+          STAGE_TYPECHECK: ${{ steps.typecheck.outcome }}
+          STAGE_UNIT: ${{ steps.unit.outcome }}
+          STAGE_INTEGRATION: ${{ steps.integration.outcome }}
+          STAGE_BUILD: ${{ steps.build.outcome }}
+          STAGE_SMOKE: ${{ steps.smoke.outcome }}
+        run: |
+          node tests/summarize-ci.cjs
+          cat test_report.md
+
+      - name: Upload logs and report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: github-repo-manager-validation
+          path: |
+            test_report.md
+            tests/output/
+          if-no-files-found: warn
+
+      - name: Commit test_report.md to directly pushed branch
+        if: ${{ always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref, 'refs/heads/test/')) }}
+        run: |
+          set -euo pipefail
+          git add -- test_report.md
+          if git diff --cached --quiet; then
+            echo "Report unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: update test_report.md [skip ci]"
+          git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
+
+      - name: Fail job if any required stage failed
+        if: always()
+        run: |
+          test "${{ steps.install.outcome }}" = success
+          test "${{ steps.doctor.outcome }}" = success
+          test "${{ steps.typecheck.outcome }}" = success
+          test "${{ steps.unit.outcome }}" = success
+          test "${{ steps.integration.outcome }}" = success
+          test "${{ steps.build.outcome }}" = success
+          test "${{ steps.smoke.outcome }}" = success
