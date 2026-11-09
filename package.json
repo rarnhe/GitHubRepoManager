@@ -1,0 +1,23 @@
+{
+  "name": "github-repo-manager",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Create GitHub repositories or replace a local folder with the remote default branch",
+  "scripts": {
+    "build": "node build.js",
+    "dev": "tsx src/hosts/node.ts",
+    "start": "node dist/github-repo-manager.js",
+    "typecheck": "tsc --noEmit",
+    "doctor": "node tests/doctor.cjs",
+    "test:unit": "tsx --test tests/unit.test.ts",
+    "test:integration": "tsx --test tests/integration.test.ts",
+    "test:smoke": "tsx --test tests/smoke.test.ts",
+    "test": "npm run typecheck && npm run test:unit && npm run test:integration && npm run build && npm run test:smoke"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}
